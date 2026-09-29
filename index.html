@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GPRL Globe</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Petrona:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --purple: #401F68; --purple-mid: #836EAA; --purple-soft: #E4E0EE;
+    --ink: #342F2E; --ink-strong: #1a1717; --muted: #716C6B;
+    --rule: #D8D6D6; --bg: #FAF9F7;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Roboto, sans-serif; }
+  #globe { position: absolute; inset: 0; }
+  #globe svg { display: block; cursor: grab; user-select: none; }
+
+  .pop { transform-box: fill-box; transform-origin: center; transition: transform .18s ease; }
+  .pop.intro { animation: pop .55s cubic-bezier(.3, 1.6, .5, 1) backwards; }
+  .spoke.intro { animation: fade .3s ease backwards; }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes pop { from { transform: scale(0); } }
+  .m:hover .pop, .m.focus .pop { transform: scale(1.7); }
+  .m { cursor: pointer; }
+
+  #card { position: absolute; right: 32px; top: 50%; width: 340px; z-index: 4;
+          background: #fff; border: 1px solid var(--ink); border-left: 4px solid var(--purple);
+          box-shadow: 0 8px 28px rgba(0,0,0,.10); pointer-events: none;
+          opacity: 0; transform: translate(16px, -50%); transition: opacity .25s, transform .25s; }
+  #card.on { opacity: 1; transform: translate(0, -50%); }
+  #card .ph { width: 100%; aspect-ratio: 1; background: #EFEDE9 center / cover no-repeat; border-bottom: 1px solid var(--rule); }
+  #card .b { padding: 16px 18px 20px; }
+  #card .nm { font-family: Petrona, serif; font-weight: 700; font-size: 26px; line-height: 1.2; color: var(--ink-strong); }
+  #card .fr { margin-top: 4px; font-size: 15px; font-weight: 500; color: var(--purple); }
+  #card .ff { margin-top: 12px; font-size: 16px; line-height: 1.45; }
+</style>
+</head>
+<body>
+<div id="globe"></div>
+<div id="card"><div class="ph"></div><div class="b"><div class="nm"></div><div class="fr"></div><div class="ff"></div></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script src="world.js"></script>
+<script src="people.js"></script>
+<script>
+(function () {
+  const PEOPLE = (window.PEOPLE || []).filter(p => isFinite(p.lat) && isFinite(p.lon));
+  const C = {
+    purple: '#401F68', purpleMid: '#836EAA', ink: '#342F2E', inkStrong: '#1a1717',
+    rule: '#D8D6D6', land: '#FAF9F7'
+  };
+
+  // world-atlas names differ from how people write some countries.
+  const COUNTRY_ALIASES = {
+    'congo, dem. rep.': 'Dem. Rep. Congo', 'drc': 'Dem. Rep. Congo',
+    'democratic republic of the congo': 'Dem. Rep. Congo',
+    "cote d'ivoire": "Côte d'Ivoire", "côte d'ivoire": "Côte d'Ivoire", 'ivory coast': "Côte d'Ivoire",
+    'south sudan': 'S. Sudan', 'central african republic': 'Central African Rep.',
+    'bosnia and herzegovina': 'Bosnia and Herz.', 'dominican republic': 'Dominican Rep.',
+    'usa': 'United States of America', 'us': 'United States of America',
+    'united states': 'United States of America', 'uk': 'United Kingdom',
+    'england': 'United Kingdom', 'scotland': 'United Kingdom', 'wales': 'United Kingdom',
+    'south korea': 'South Korea', 'korea': 'South Korea', 'czech republic': 'Czechia',
+    'eswatini': 'eSwatini', 'swaziland': 'eSwatini', 'equatorial guinea': 'Eq. Guinea',
+    'solomon islands': 'Solomon Is.', 'western sahara': 'W. Sahara'
+  };
+  const topoName = c => {
+    if (!c) return null;
+    const k = c.toLowerCase().trim();
+    return COUNTRY_ALIASES[k] || c.trim().replace(/\b\w/g, s => s.toUpperCase());
+  };
+
+  const countryCount = {};
+  PEOPLE.forEach(p => { const n = topoName(p.country); if (n) countryCount[n] = (countryCount[n] || 0) + 1; });
+  const maxCount = Math.max(1, ...Object.values(countryCount));
+  const fillFor = name => {
+    const c = countryCount[name] || 0;
+    return c ? d3.interpolateRgb(C.land, C.purple)(0.18 + 0.62 * (c / maxCount)) : C.land;
+  };
+
+  // Tour order sweeps west → east so the globe turns one way.
+  const tourOrder = PEOPLE.slice().sort((a, b) => a.lon - b.lon);
+
+  const el = document.getElementById('globe');
+  const card = document.getElementById('card');
+  let state = null;
+
+  function showCard(p) {
+    card.querySelector('.ph').style.backgroundImage = `url("${encodeURI(p.photo)}")`;
+    card.querySelector('.nm').textContent = p.name;
+    card.querySelector('.fr').textContent = [p.city, p.country].filter(Boolean).join(', ');
+    card.querySelector('.ff').textContent = p.fun_fact;
+    card.classList.add('on');
+  }
+  function hideCard() { card.classList.remove('on'); }
+
+  function build(prevRotate, animateIn) {
+    if (state) state.destroy();
+    el.innerHTML = '';
+
+    const W = el.clientWidth, H = el.clientHeight;
+    const side = W > 1000 ? 380 : 0;               // room for the card on the right
+    const cx = (W - side) / 2, cy = H / 2;
+    const radius = Math.max(80, Math.min(W - side, H) / 2 - 40);
+    const R = Math.max(10, Math.min(22, radius * 0.045));  // marker radius
+
+    const svg = d3.select(el).append('svg').attr('width', W).attr('height', H);
+    const defs = svg.append('defs');
+    defs.append('clipPath').attr('id', 'pclip').append('circle').attr('r', R);
+    const glow = defs.append('radialGradient').attr('id', 'glow').attr('cx', '50%').attr('cy', '50%').attr('r', '50%');
+    glow.append('stop').attr('offset', '85%').attr('stop-color', C.purple).attr('stop-opacity', 0);
+    glow.append('stop').attr('offset', '100%').attr('stop-color', C.purple).attr('stop-opacity', 0.18);
+
+    const root = svg.append('g');
+    const projection = d3.geoOrthographic().scale(radius).translate([cx, cy]).clipAngle(90).precision(0.4)
+      .rotate(prevRotate || [-20, -15]);
+    const path = d3.geoPath(projection);
+
+    root.append('circle').attr('cx', cx).attr('cy', cy).attr('r', radius + 14).attr('fill', 'url(#glow)');
+    const sphere = root.append('path').datum({ type: 'Sphere' }).attr('fill', '#fff');
+    const countries = topojson.feature(window.WORLD_TOPO, window.WORLD_TOPO.objects.countries).features;
+    const countrySel = root.append('g').selectAll('path').data(countries).join('path')
+      .attr('fill', d => fillFor(d.properties.name))
+      .attr('stroke', C.rule).attr('stroke-width', 0.5);
+    const rim = root.append('path').datum({ type: 'Sphere' })
+      .attr('fill', 'none').attr('stroke', C.inkStrong).attr('stroke-width', 1.2);
+
+    // Markers sit on their city and push each other apart (screen space);
+    // displaced ones keep a leader line back to a dot on the city.
+    const marks = PEOPLE.map((p, i) => {
+      const t = i * 2.39996;                        // golden angle: distinct seed per person
+      return { p, off: [Math.cos(t) * 0.5, Math.sin(t) * 0.5] };
+    });
+    const GAP = 2 * (R + 2.5) + 3;
+
+    const order = new Map(tourOrder.map((p, i) => [p.id, i]));
+    const introDelay = d => `${400 + order.get(d.p.id) * 70}ms`;
+    const leaders = root.append('g');
+    const leaderSel = leaders.selectAll('line').data(marks).join('line')
+      .attr('stroke', C.purpleMid).attr('stroke-width', 1);
+    const dotSel = leaders.selectAll('circle').data(marks).join('circle')
+      .attr('r', 2.5).attr('fill', C.purple);
+    // Spokes enter with their marker, so they never show before the photo.
+    [leaderSel, dotSel].forEach(sel => sel.attr('class', 'spoke').classed('intro', animateIn)
+      .style('animation-delay', introDelay)
+      .on('animationend', function () { this.classList.remove('intro'); }));
+
+    const markLayer = root.append('g');
+    const markSel = markLayer.selectAll('g.m').data(marks).join('g').attr('class', 'm');
+    // The intro class comes off once a marker lands: raise() re-inserts the
+    // node, which would otherwise replay the pop on every hover.
+    const pop = markSel.append('g').attr('class', 'pop').classed('intro', animateIn)
+      .style('animation-delay', introDelay)
+      .on('animationend', function () { this.classList.remove('intro'); });
+    pop.append('circle').attr('r', R + 2.5).attr('fill', '#fff').attr('stroke', C.purple).attr('stroke-width', 2);
+    pop.append('image').attr('href', d => encodeURI(d.p.photo))
+      .attr('x', -R).attr('y', -R).attr('width', 2 * R).attr('height', 2 * R)
+      .attr('preserveAspectRatio', 'xMidYMid slice').attr('clip-path', 'url(#pclip)');
+
+    function visible(lon, lat) {
+      const r = projection.rotate();
+      return d3.geoDistance([-r[0], -r[1]], [lon, lat]) < Math.PI / 2 - 0.04;
+    }
+    function relax(shown, iters, pull) {
+      shown.forEach(d => { d.off[0] *= pull; d.off[1] *= pull; });
+      for (let k = 0; k < iters; k++) {
+        for (let i = 0; i < shown.length; i++) {
+          const a = shown[i];
+          for (let j = i + 1; j < shown.length; j++) {
+            const b = shown[j];
+            let dx = (b._xy[0] + b.off[0]) - (a._xy[0] + a.off[0]);
+            let dy = (b._xy[1] + b.off[1]) - (a._xy[1] + a.off[1]);
+            let dist = Math.hypot(dx, dy);
+            if (dist >= GAP) continue;
+            if (dist < 1e-6) { dx = b.off[0] - a.off[0] || 1; dy = b.off[1] - a.off[1]; dist = Math.hypot(dx, dy); }
+            const push = (GAP - dist) / 2 / dist;
+            a.off[0] -= dx * push; a.off[1] -= dy * push;
+            b.off[0] += dx * push; b.off[1] += dy * push;
+          }
+        }
+      }
+    }
+    let settled = false;
+    function redraw() {
+      sphere.attr('d', path);
+      countrySel.attr('d', path);
+      rim.attr('d', path);
+      const shown = [];
+      marks.forEach(d => {
+        d._on = visible(d.p.lon, d.p.lat);
+        if (d._on) { d._xy = projection([d.p.lon, d.p.lat]); shown.push(d); }
+      });
+      relax(shown, settled ? 10 : 120, settled ? 0.9 : 1);
+      settled = true;
+      markSel.each(function (d) {
+        const sel = d3.select(this);
+        if (!d._on) { sel.attr('visibility', 'hidden'); return; }
+        sel.attr('visibility', null).attr('transform', `translate(${d._xy[0] + d.off[0]},${d._xy[1] + d.off[1]})`);
+      });
+      const moved = d => d._on && Math.hypot(d.off[0], d.off[1]) > R * 0.6;
+      leaderSel.each(function (d) {
+        const sel = d3.select(this);
+        if (!moved(d)) { sel.attr('visibility', 'hidden'); return; }
+        const [x, y] = d._xy;
+        sel.attr('visibility', null).attr('x1', x).attr('y1', y).attr('x2', x + d.off[0]).attr('y2', y + d.off[1]);
+      });
+      dotSel.each(function (d) {
+        const sel = d3.select(this);
+        if (!moved(d)) { sel.attr('visibility', 'hidden'); return; }
+        sel.attr('visibility', null).attr('cx', d._xy[0]).attr('cy', d._xy[1]);
+      });
+    }
+    redraw();
+
+    // ---- auto-rotate (eases to a stop under the cursor), drag, wheel zoom ----
+    const SPIN = 5;
+    let v = 0, target = 0, timer = null, idle = null, hovering = false, touring = false;
+    function spin() {
+      if (timer) return;
+      let last = performance.now();
+      timer = d3.timer(() => {
+        const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        v += (target - v) * Math.min(1, dt * 4);
+        if (Math.abs(v) > 0.01) {
+          const r = projection.rotate();
+          projection.rotate([r[0] + dt * v, r[1], r[2]]);
+          redraw();
+        } else if (target === 0) { v = 0; timer.stop(); timer = null; }
+      });
+    }
+    function resume(ms) {
+      clearTimeout(idle);
+      idle = setTimeout(() => { if (!hovering && !touring) { target = SPIN; spin(); } }, ms);
+    }
+    function halt() { if (timer) { timer.stop(); timer = null; } v = 0; target = 0; clearTimeout(idle); }
+    resume(animateIn ? 400 + PEOPLE.length * 70 : 800);
+
+    svg.on('mouseenter', () => { hovering = true; clearTimeout(idle); target = 0; spin(); })
+       .on('mouseleave', () => { hovering = false; resume(800); });
+
+    svg.call(d3.drag()
+      .on('start', () => { halt(); endTour(); svg.style('cursor', 'grabbing'); })
+      .on('drag', e => {
+        const r = projection.rotate();
+        projection.rotate([r[0] + e.dx * 0.35, Math.max(-35, Math.min(35, r[1] - e.dy * 0.2)), r[2]]);
+        redraw();
+      })
+      .on('end', () => { svg.style('cursor', 'grab'); resume(2500); }));
+
+    const zoom = d3.zoom().scaleExtent([1, 6])
+      .filter(e => e.type === 'wheel' || e.type === 'dblclick')
+      .on('zoom', e => root.attr('transform', `translate(${cx},${cy}) scale(${e.transform.k}) translate(${-cx},${-cy})`));
+    svg.call(zoom);
+
+    // ---- hover card ----
+    let tourAt = -1;
+    markSel
+      .on('mouseenter', function (e, d) { d3.select(this).raise(); showCard(d.p); })
+      .on('mouseleave', () => { if (tourAt >= 0) showCard(tourOrder[tourAt]); else hideCard(); });
+
+    // ---- tour: Space / → next, ← previous, Esc stop ----
+    function goTo(i) {
+      halt();
+      touring = true;
+      tourAt = (i + tourOrder.length) % tourOrder.length;
+      const p = tourOrder[tourAt];
+      markSel.classed('focus', d => d.p === p);
+      markSel.filter(d => d.p === p).raise();
+      const [r0, p0] = projection.rotate();
+      const dLon = ((-p.lon - r0 + 540) % 360) - 180;
+      const pTarget = Math.max(-30, Math.min(30, -p.lat * 0.6));
+      showCard(p);
+      d3.select(svg.node()).interrupt('tour').transition('tour').duration(1400).ease(d3.easeCubicInOut)
+        .tween('rotate', () => t => { projection.rotate([r0 + dLon * t, p0 + (pTarget - p0) * t, 0]); redraw(); });
+    }
+    function endTour() {
+      if (!touring) return;
+      touring = false; tourAt = -1;
+      svg.interrupt('tour');
+      markSel.classed('focus', false);
+      hideCard();
+      resume(1500);
+    }
+    function onKey(e) {
+      if (!tourOrder.length) return;
+      if (e.key === ' ' || e.key === 'ArrowRight') { e.preventDefault(); goTo(tourAt + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); goTo(tourAt < 0 ? tourOrder.length - 1 : tourAt - 1); }
+      else if (e.key === 'Escape') endTour();
+    }
+    window.addEventListener('keydown', onKey);
+
+    state = {
+      rotate: () => projection.rotate(),
+      destroy() { halt(); svg.interrupt('tour'); window.removeEventListener('keydown', onKey); hideCard(); }
+    };
+  }
+
+  build(null, true);
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => build(state && state.rotate(), false), 150);
+  });
+})();
+</script>
+</body>
+</html>
