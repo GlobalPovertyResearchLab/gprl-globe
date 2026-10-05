@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>GPRL Globe</title>
+<title>The GPRL Globe</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Petrona:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
@@ -15,6 +15,8 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Roboto, sans-serif; }
   #globe { position: absolute; inset: 0; }
   #globe svg { display: block; cursor: grab; user-select: none; }
+  h1 { position: absolute; right: 32px; top: 28px; z-index: 3; margin: 0; pointer-events: none; text-align: right;
+       font-family: Petrona, serif; font-weight: 700; font-size: clamp(26px, 3.2vw, 48px); line-height: 1.1; color: var(--purple); }
 
   .pop { transform-box: fill-box; transform-origin: center; transition: transform .18s ease; }
   .pop.intro { animation: pop .55s cubic-bezier(.3, 1.6, .5, 1) backwards; }
@@ -37,6 +39,7 @@
 </style>
 </head>
 <body>
+<h1>The GPRL Globe</h1>
 <div id="globe"></div>
 <div id="card"><div class="ph"></div><div class="b"><div class="nm"></div><div class="fr"></div><div class="ff"></div></div></div>
 
