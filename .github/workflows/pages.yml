@@ -1,0 +1,40 @@
+# Publishes the globe to GitHub Pages on every push to main.
+# people.js is generated (and gitignored), so it is built here from people/*/profile.json.
+name: Publish globe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Forks carry this file too; only the lab's repo publishes.
+    if: github.repository == 'GlobalPovertyResearchLab/gprl-globe'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build people.js
+        run: python3 globe.py --no-open
+      - name: Collect the site
+        run: |
+          mkdir _site
+          cp -r index.html world.js people.js people _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
