@@ -5,7 +5,7 @@
 <title>The GPRL Globe</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@700&family=Petrona:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Petrona:wght@600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --purple: #401F68; --purple-mid: #836EAA; --purple-soft: #E4E0EE;
@@ -15,9 +15,6 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: Roboto, sans-serif; }
   #globe { position: absolute; inset: 0; }
   #globe svg { display: block; cursor: grab; user-select: none; }
-  h1 { position: absolute; left: 0; right: 0; top: 0; height: 96px; z-index: 3; margin: 0; pointer-events: none;
-       display: flex; align-items: center; justify-content: center;
-       font-family: 'Noto Serif', serif; font-weight: 700; font-size: clamp(28px, 3.4vw, 46px); line-height: 1.1; color: var(--purple); }
 
   .pop { transform-box: fill-box; transform-origin: center; transition: transform .18s ease; }
   .pop.intro { animation: pop .55s cubic-bezier(.3, 1.6, .5, 1) backwards; }
@@ -40,7 +37,6 @@
 </style>
 </head>
 <body>
-<h1>The GPRL Globe</h1>
 <div id="globe"></div>
 <div id="card"><div class="ph"></div><div class="b"><div class="nm"></div><div class="fr"></div><div class="ff"></div></div></div>
 
@@ -106,9 +102,8 @@
 
     const W = el.clientWidth, H = el.clientHeight;
     const side = W > 1000 ? 380 : 0;               // room for the card on the right
-    const top = 96;                                // room for the title above
-    const cx = W / 2, cy = top + (H - top) / 2;    // centered under the title
-    const radius = Math.max(80, Math.min(W / 2 - side, (H - top) / 2) - 28);
+    const cx = W / 2, cy = H / 2;                  // centered in the window
+    const radius = Math.max(80, Math.min(W / 2 - side, H / 2) - 28);
     const R = Math.max(10, Math.min(22, radius * 0.045));  // marker radius
 
     const svg = d3.select(el).append('svg').attr('width', W).attr('height', H);
