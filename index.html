@@ -101,7 +101,7 @@
     el.innerHTML = '';
 
     const W = el.clientWidth, H = el.clientHeight;
-    const side = W > 1000 ? 380 : 0;               // room for the card on the right
+    const side = W > 1000 ? 300 : 0;               // the card on the right may overlap the globe's edge a little
     const cx = W / 2, cy = H / 2;                  // centered in the window
     const radius = Math.max(80, Math.min(W / 2 - side, H / 2) - 28);
     const R = Math.max(10, Math.min(22, radius * 0.045));  // marker radius
